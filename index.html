@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="学习打卡">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icon.svg">
+<title>学习打卡</title>
+<style>
+:root{--bg:#f5f5f7;--card:#fff;--tx:#1d1d1f;--sub:#86868b;--line:#e5e5ea;
+--c0:#e0453a;--c1:#2f6fed;--c2:#f39c12;--c3:#27ae60}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+body{margin:0;background:var(--bg);color:var(--tx);font:16px/1.4 -apple-system,"PingFang SC",sans-serif;
+padding:env(safe-area-inset-top) 0 calc(70px + env(safe-area-inset-bottom))}
+.page{display:none;padding:14px}.page.on{display:block}
+.card{background:var(--card);border-radius:14px;padding:14px;margin-bottom:12px}
+h2{margin:0 0 10px;font-size:15px;color:var(--sub);font-weight:500}
+.big{font-size:44px;font-weight:600;font-variant-numeric:tabular-nums;text-align:center}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.sbtn{border:0;border-radius:12px;color:#fff;font-size:20px;font-weight:600;padding:18px 0}
+.sbtn small{display:block;font-size:12px;font-weight:400;opacity:.9}
+.stop{width:100%;border:0;border-radius:12px;background:#1d1d1f;color:#fff;font-size:18px;padding:14px;margin-top:10px}
+.tabs{position:fixed;bottom:0;left:0;right:0;display:flex;background:rgba(255,255,255,.95);border-top:1px solid var(--line);
+padding-bottom:env(safe-area-inset-bottom)}
+.tabs button{flex:1;border:0;background:none;padding:12px 0;font-size:15px;color:var(--sub)}
+.tabs button.on{color:var(--c1);font-weight:600}
+.cal{display:grid;grid-template-columns:repeat(7,1fr);gap:4px;text-align:center}
+.cal .h{font-size:12px;color:var(--sub)}
+.d{border-radius:10px;padding:6px 0;min-height:52px;font-size:14px;background:#f2f2f7}
+.d small{display:block;font-size:11px;color:var(--sub)}
+.d.has{background:#dbe7ff}.d.has2{background:#a9c5ff}.d.has3{background:#6f9cf5;color:#fff}.d.has3 small{color:#fff}
+.d.today{outline:2px solid var(--c1)}.d.sel{outline:2px solid #1d1d1f}
+.nav{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
+.nav button{border:0;background:#f2f2f7;border-radius:8px;padding:6px 14px;font-size:18px}
+.row{display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--line)}
+.row:last-child{border:0}.dot{width:10px;height:10px;border-radius:50%}
+.row .t{flex:1}.row .x{border:0;background:none;color:var(--c0);font-size:14px}
+.bar{display:flex;align-items:center;gap:8px;margin:6px 0;font-size:14px}
+.bar .n{width:40px}.bar .b{flex:1;background:#f2f2f7;border-radius:6px;height:16px;display:flex;overflow:hidden}
+.bar .v{width:64px;text-align:right;font-variant-numeric:tabular-nums}
+.btn{border:0;background:#f2f2f7;border-radius:10px;padding:10px 14px;font-size:15px;margin:4px 6px 4px 0}
+select,input{font-size:16px;padding:8px;border:1px solid var(--line);border-radius:8px;background:#fff}
+</style>
+</head>
+<body>
+<div class="page on" id="p-today"></div>
+<div class="page" id="p-cal"></div>
+<div class="page" id="p-week"></div>
+<div class="tabs">
+  <button data-p="today" class="on">打卡</button>
+  <button data-p="cal">日历</button>
+  <button data-p="week">统计</button>
+</div>
+<script>
+const SUBJ=['政治','英语','数学','控制'], COL=['var(--c0)','var(--c1)','var(--c2)','var(--c3)'];
+const K='study.sessions', KR='study.running';
+const load=(k,d)=>{try{return JSON.parse(localStorage.getItem(k))??d}catch{return d}};
+let sessions=load(K,[]);          // {id,s:科目序号,start:ms,end:ms}
+let running=load(KR,null);        // {s,start}，进行中的打卡，退出App也不丢
+const save=()=>{localStorage.setItem(K,JSON.stringify(sessions));localStorage.setItem(KR,JSON.stringify(running))};
+const pad=n=>String(n).padStart(2,'0');
+const dkey=t=>{const d=new Date(t);return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`};
+const hm=t=>{const d=new Date(t);return `${pad(d.getHours())}:${pad(d.getMinutes())}`};
+const fmt=ms=>{const m=Math.round(ms/60000);return m<60?`${m}分`:`${Math.floor(m/60)}时${pad(m%60)}分`};
+const clock=ms=>{const s=Math.floor(ms/1000);return `${pad(Math.floor(s/3600))}:${pad(Math.floor(s/60)%60)}:${pad(s%60)}`};
+const dur=x=>x.end-x.start;
+const byDay=k=>sessions.filter(x=>dkey(x.start)===k);
+const sum=a=>a.reduce((n,x)=>n+dur(x),0);
+let calMonth=new Date(); calMonth.setDate(1);
+let selDay=dkey(Date.now());
+
+function start(s){ if(running)return; running={s,start:Date.now()}; save(); render(); }
+function stop(){
+  if(!running)return;
+  const end=Date.now();
+  if(end-running.start>=1000) sessions.push({id:end,s:running.s,start:running.start,end});
+  running=null; save(); render();
+}
+function del(id){ if(confirm('删除这条记录？')){sessions=sessions.filter(x=>x.id!==id);save();render();} }
+function addManual(){
+  const s=+document.getElementById('ms').value, m=+document.getElementById('mm').value;
+  if(!m||m<=0)return alert('请输入分钟数');
+  const [y,mo,d]=selDay.split('-').map(Number);
+  const st=new Date(y,mo-1,d,12,0).getTime();
+  sessions.push({id:Date.now(),s,start:st,end:st+m*60000}); save(); render();
+}
+
+function list(arr,canDel){
+  if(!arr.length)return '<div style="color:var(--sub)">暂无记录</div>';
+  return arr.sort((a,b)=>a.start-b.start).map(x=>`<div class="row"><span class="dot" style="background:${COL[x.s]}"></span>
+  <span class="t">${SUBJ[x.s]} ${hm(x.start)}–${hm(x.end)}</span><b>${fmt(dur(x))}</b>
+  ${canDel?`<button class="x" onclick="del(${x.id})">删除</button>`:''}</div>`).join('');
+}
+
+function renderToday(){
+  const k=dkey(Date.now()), td=byDay(k);
+  let h='';
+  if(running){
+    h+=`<div class="card"><h2>正在学习：${SUBJ[running.s]}（${hm(running.start)} 开始）</h2>
+    <div class="big" id="tick">${clock(Date.now()-running.start)}</div>
+    <button class="stop" onclick="stop()">学完了 · 打卡结束</button></div>`;
+  } else {
+    h+=`<div class="card"><h2>选择科目，开始学习打卡</h2><div class="grid">`+
+      SUBJ.map((n,i)=>`<button class="sbtn" style="background:${COL[i]}" onclick="start(${i})">${n}
+      <small>今日 ${fmt(sum(td.filter(x=>x.s===i)))}</small></button>`).join('')+`</div></div>`;
+  }
+  h+=`<div class="card"><h2>今日已学</h2><div class="big" style="font-size:32px">${fmt(sum(td)+(running?Date.now()-running.start:0))}</div></div>
+  <div class="card"><h2>今日记录</h2>${list(td,true)}</div>`;
+  document.getElementById('p-today').innerHTML=h;
+}
+
+function renderCal(){
+  const y=calMonth.getFullYear(), m=calMonth.getMonth();
+  const first=new Date(y,m,1), days=new Date(y,m+1,0).getDate(), off=(first.getDay()+6)%7;
+  let h=`<div class="card"><div class="nav"><button onclick="mv(-1)">‹</button><b>${y}年${m+1}月</b><button onclick="mv(1)">›</button></div><div class="cal">`+
+    '一二三四五六日'.split('').map(c=>`<div class="h">${c}</div>`).join('')+'<div></div>'.repeat(off);
+  let mt=0;
+  for(let d=1;d<=days;d++){
+    const k=`${y}-${pad(m+1)}-${pad(d)}`, t=sum(byDay(k)); mt+=t;
+    const hrs=t/3600000, cls=hrs>=4?'has3':hrs>=2?'has2':t>0?'has':'';
+    h+=`<div class="d ${cls} ${k===dkey(Date.now())?'today':''} ${k===selDay?'sel':''}" onclick="selDay='${k}';render()">${d}<small>${t?fmt(t):''}</small></div>`;
+  }
+  h+=`</div><div style="margin-top:8px;color:var(--sub);font-size:14px">本月累计 ${fmt(mt)}</div></div>`;
+  const ds=byDay(selDay);
+  h+=`<div class="card"><h2>${selDay} · 共 ${fmt(sum(ds))}</h2>${list(ds,true)}
+  <div style="margin-top:10px"><h2>补录（忘记打卡时）</h2><select id="ms">${SUBJ.map((n,i)=>`<option value="${i}">${n}</option>`).join('')}</select>
+  <input id="mm" type="number" inputmode="numeric" placeholder="分钟" style="width:80px">
+  <button class="btn" onclick="addManual()">添加</button></div></div>`;
+  document.getElementById('p-cal').innerHTML=h;
+}
+function mv(n){calMonth.setMonth(calMonth.getMonth()+n);render()}
+
+let weekOff=0;
+function renderWeek(){
+  const now=new Date(); now.setHours(0,0,0,0);
+  const mon=new Date(now); mon.setDate(now.getDate()-((now.getDay()+6)%7)+weekOff*7);
+  const days=[...Array(7)].map((_,i)=>{const d=new Date(mon);d.setDate(mon.getDate()+i);return d});
+  const per=days.map(d=>{const a=byDay(dkey(d));return {d,a,t:sum(a)}});
+  const total=per.reduce((n,x)=>n+x.t,0), max=Math.max(...per.map(x=>x.t),1);
+  const subj=SUBJ.map((_,i)=>per.reduce((n,x)=>n+sum(x.a.filter(y=>y.s===i)),0));
+  const label=`${dkey(days[0]).slice(5)} ~ ${dkey(days[6]).slice(5)}`;
+  let h=`<div class="card"><div class="nav"><button onclick="weekOff--;render()">‹</button><b>${weekOff===0?'本周':label}</b><button onclick="weekOff++;render()">›</button></div>
+  <div style="text-align:center;color:var(--sub)">${label}</div><div class="big">${fmt(total)}</div>
+  <div style="text-align:center;color:var(--sub);font-size:14px">日均 ${fmt(total/7)}</div></div>
+  <div class="card"><h2>每天</h2>`+per.map((x,i)=>`<div class="bar"><span class="n">周${'一二三四五六日'[i]}</span>
+  <span class="b">${SUBJ.map((_,j)=>{const t=sum(x.a.filter(y=>y.s===j));return `<i style="width:${t/max*100}%;background:${COL[j]}"></i>`}).join('')}</span>
+  <span class="v">${x.t?fmt(x.t):'-'}</span></div>`).join('')+`</div>
+  <div class="card"><h2>各科目</h2>`+subj.map((t,i)=>`<div class="bar"><span class="n">${SUBJ[i]}</span>
+  <span class="b"><i style="width:${t/Math.max(...subj,1)*100}%;background:${COL[i]}"></i></span><span class="v">${fmt(t)}</span></div>`).join('')+`</div>
+  <div class="card"><h2>数据备份</h2><button class="btn" onclick="exp()">导出</button>
+  <button class="btn" onclick="document.getElementById('imp').click()">导入</button>
+  <input id="imp" type="file" accept=".json" hidden onchange="imp(this.files[0])">
+  <div style="color:var(--sub);font-size:13px">数据只存在这部手机里，清理 Safari 数据会丢失，建议定期导出。</div></div>`;
+  document.getElementById('p-week').innerHTML=h;
+}
+function exp(){
+  const b=new Blob([JSON.stringify(sessions)],{type:'application/json'}), a=document.createElement('a');
+  a.href=URL.createObjectURL(b); a.download=`study-${dkey(Date.now())}.json`; a.click();
+}
+function imp(f){
+  if(!f)return; f.text().then(t=>{try{const d=JSON.parse(t); if(!Array.isArray(d))throw 0;
+    if(confirm(`导入 ${d.length} 条记录，将覆盖现有数据？`)){sessions=d;save();render();}}catch(e){alert('文件格式不对')}});
+}
+
+let page='today';
+function render(){ renderToday(); renderCal(); renderWeek();
+  document.querySelectorAll('.page').forEach(e=>e.classList.toggle('on',e.id==='p-'+page));
+  document.querySelectorAll('.tabs button').forEach(b=>b.classList.toggle('on',b.dataset.p===page)); }
+document.querySelectorAll('.tabs button').forEach(b=>b.onclick=()=>{page=b.dataset.p;render()});
+setInterval(()=>{ if(running&&page==='today'){const t=document.getElementById('tick'); if(t)t.textContent=clock(Date.now()-running.start);} },1000);
+document.addEventListener('visibilitychange',()=>{if(!document.hidden)render()});
+render();
+if('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(()=>{});
+</script>
+</body>
+</html>
