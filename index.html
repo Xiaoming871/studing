@@ -7,11 +7,11 @@
 <meta name="apple-mobile-web-app-title" content="学习打卡">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <link rel="manifest" href="manifest.json">
-<link rel="apple-touch-icon" href="icon.svg">
+<link rel="apple-touch-icon" href="icon-180.png">
 <title>学习打卡</title>
 <style>
 :root{--bg:#f5f5f7;--card:#fff;--tx:#1d1d1f;--sub:#86868b;--line:#e5e5ea;
---c0:#e0453a;--c1:#2f6fed;--c2:#f39c12;--c3:#27ae60}
+--c0:#b87a74;--c1:#6f88b3;--c2:#c4a574;--c3:#7fa68c;--acc:#3a3a3c}
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 body{margin:0;background:var(--bg);color:var(--tx);font:16px/1.4 -apple-system,"PingFang SC",sans-serif;
 padding:env(safe-area-inset-top) 0 calc(70px + env(safe-area-inset-bottom))}
@@ -26,13 +26,18 @@ h2{margin:0 0 10px;font-size:15px;color:var(--sub);font-weight:500}
 .tabs{position:fixed;bottom:0;left:0;right:0;display:flex;background:rgba(255,255,255,.95);border-top:1px solid var(--line);
 padding-bottom:env(safe-area-inset-bottom)}
 .tabs button{flex:1;border:0;background:none;padding:12px 0;font-size:15px;color:var(--sub)}
-.tabs button.on{color:var(--c1);font-weight:600}
+.tabs button.on{color:var(--tx);font-weight:600}
+#toast{position:fixed;top:calc(10px + env(safe-area-inset-top));left:14px;right:14px;background:#1d1d1f;color:#fff;border-radius:12px;padding:12px 14px;z-index:9;display:none}
+.goal{display:flex;align-items:center;gap:8px;margin:6px 0}
+.goal input{width:70px}
+.prog{height:8px;border-radius:4px;background:#f2f2f7;overflow:hidden;margin:4px 0 10px}
+.prog i{display:block;height:100%;background:var(--tx)}
 .cal{display:grid;grid-template-columns:repeat(7,1fr);gap:4px;text-align:center}
 .cal .h{font-size:12px;color:var(--sub)}
 .d{border-radius:10px;padding:6px 0;min-height:52px;font-size:14px;background:#f2f2f7}
 .d small{display:block;font-size:11px;color:var(--sub)}
-.d.has{background:#dbe7ff}.d.has2{background:#a9c5ff}.d.has3{background:#6f9cf5;color:#fff}.d.has3 small{color:#fff}
-.d.today{outline:2px solid var(--c1)}.d.sel{outline:2px solid #1d1d1f}
+.d.has{background:#e6e9ef}.d.has2{background:#c3cbdb}.d.has3{background:#8794ad;color:#fff}.d.has3 small{color:#fff}
+.d.today{outline:2px solid var(--acc)}.d.sel{outline:2px solid #1d1d1f}
 .nav{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
 .nav button{border:0;background:#f2f2f7;border-radius:8px;padding:6px 14px;font-size:18px}
 .row{display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--line)}
@@ -46,6 +51,7 @@ select,input{font-size:16px;padding:8px;border:1px solid var(--line);border-radi
 </style>
 </head>
 <body>
+<div id="toast"></div>
 <div class="page on" id="p-today"></div>
 <div class="page" id="p-cal"></div>
 <div class="page" id="p-week"></div>
@@ -72,12 +78,46 @@ const sum=a=>a.reduce((n,x)=>n+dur(x),0);
 let calMonth=new Date(); calMonth.setDate(1);
 let selDay=dkey(Date.now());
 
+// ---- 目标与提醒 ----
+const H=3600000;
+let goals=load('study.goals',{day:4,week:28});   // 小时，0 表示关闭
+let notified=load('study.notified',{});
+const weekStart=()=>{const n=new Date();n.setHours(0,0,0,0);n.setDate(n.getDate()-((n.getDay()+6)%7));return n};
+const runMs=()=>running?Date.now()-running.start:0;
+const todayTotal=()=>sum(byDay(dkey(Date.now())))+runMs();
+const weekTotal=()=>{const ws=weekStart().getTime();return sum(sessions.filter(x=>x.start>=ws))+runMs()};
+function notify(msg){
+  const t=document.getElementById('toast'); t.textContent=msg; t.style.display='block';
+  setTimeout(()=>{t.style.display='none'},8000);
+  if('Notification' in window && Notification.permission==='granted' && navigator.serviceWorker)
+    navigator.serviceWorker.ready.then(r=>r.showNotification('学习打卡',{body:msg})).catch(()=>{});
+}
+function checkGoals(){
+  const dk='d'+dkey(Date.now()), wk='w'+dkey(weekStart());
+  if(goals.day>0 && todayTotal()>=goals.day*H && !notified[dk]){
+    notified[dk]=1; localStorage.setItem('study.notified',JSON.stringify(notified)); notify(`今日目标 ${goals.day} 小时已完成`);
+  }
+  if(goals.week>0 && weekTotal()>=goals.week*H && !notified[wk]){
+    notified[wk]=1; localStorage.setItem('study.notified',JSON.stringify(notified)); notify(`本周目标 ${goals.week} 小时已完成`);
+  }
+}
+function setGoal(k,v){ goals[k]=Math.max(0,+v||0); localStorage.setItem('study.goals',JSON.stringify(goals)); render(); checkGoals(); }
+function askNotify(){
+  if(!('Notification' in window)) return alert('当前环境不支持系统通知。请先用 Safari 把本页添加到主屏幕，再从主屏幕图标打开。');
+  Notification.requestPermission().then(p=>{ alert(p==='granted'?'已开启系统通知':'未开启，仍会在打开 App 时弹出页面内提示'); render(); });
+}
+function prog(label,cur,goal){
+  if(!goal) return '';
+  return `<div style="display:flex;justify-content:space-between;font-size:14px"><span>${label}</span><span>${fmt(cur)} / ${goal}小时</span></div>
+  <div class="prog"><i style="width:${Math.min(100,cur/(goal*H)*100)}%"></i></div>`;
+}
+
 function start(s){ if(running)return; running={s,start:Date.now()}; save(); render(); }
 function stop(){
   if(!running)return;
   const end=Date.now();
   if(end-running.start>=1000) sessions.push({id:end,s:running.s,start:running.start,end});
-  running=null; save(); render();
+  running=null; save(); render(); checkGoals();
 }
 function del(id){ if(confirm('删除这条记录？')){sessions=sessions.filter(x=>x.id!==id);save();render();} }
 function addManual(){
@@ -107,7 +147,8 @@ function renderToday(){
       SUBJ.map((n,i)=>`<button class="sbtn" style="background:${COL[i]}" onclick="start(${i})">${n}
       <small>今日 ${fmt(sum(td.filter(x=>x.s===i)))}</small></button>`).join('')+`</div></div>`;
   }
-  h+=`<div class="card"><h2>今日已学</h2><div class="big" style="font-size:32px">${fmt(sum(td)+(running?Date.now()-running.start:0))}</div></div>
+  h+=`<div class="card"><h2>今日已学</h2><div class="big" style="font-size:32px">${fmt(todayTotal())}</div>
+  <div style="margin-top:10px">${prog('今日目标',todayTotal(),goals.day)}${prog('本周目标',weekTotal(),goals.week)}</div></div>
   <div class="card"><h2>今日记录</h2>${list(td,true)}</div>`;
   document.getElementById('p-today').innerHTML=h;
 }
@@ -150,6 +191,11 @@ function renderWeek(){
   <span class="v">${x.t?fmt(x.t):'-'}</span></div>`).join('')+`</div>
   <div class="card"><h2>各科目</h2>`+subj.map((t,i)=>`<div class="bar"><span class="n">${SUBJ[i]}</span>
   <span class="b"><i style="width:${t/Math.max(...subj,1)*100}%;background:${COL[i]}"></i></span><span class="v">${fmt(t)}</span></div>`).join('')+`</div>
+  <div class="card"><h2>学习目标与提醒</h2>
+  <div class="goal">每天目标 <input type="number" inputmode="decimal" step="0.5" min="0" value="${goals.day}" onchange="setGoal('day',this.value)"> 小时</div>
+  <div class="goal">每周目标 <input type="number" inputmode="decimal" step="0.5" min="0" value="${goals.week}" onchange="setGoal('week',this.value)"> 小时</div>
+  <div style="color:var(--sub);font-size:13px">填 0 表示不设目标。达到目标时会弹出提示。</div>
+  <button class="btn" onclick="askNotify()">${'Notification' in window&&Notification.permission==='granted'?'系统通知：已开启':'开启系统通知'}</button></div>
   <div class="card"><h2>数据备份</h2><button class="btn" onclick="exp()">导出</button>
   <button class="btn" onclick="document.getElementById('imp').click()">导入</button>
   <input id="imp" type="file" accept=".json" hidden onchange="imp(this.files[0])">
@@ -170,9 +216,9 @@ function render(){ renderToday(); renderCal(); renderWeek();
   document.querySelectorAll('.page').forEach(e=>e.classList.toggle('on',e.id==='p-'+page));
   document.querySelectorAll('.tabs button').forEach(b=>b.classList.toggle('on',b.dataset.p===page)); }
 document.querySelectorAll('.tabs button').forEach(b=>b.onclick=()=>{page=b.dataset.p;render()});
-setInterval(()=>{ if(running&&page==='today'){const t=document.getElementById('tick'); if(t)t.textContent=clock(Date.now()-running.start);} },1000);
-document.addEventListener('visibilitychange',()=>{if(!document.hidden)render()});
-render();
+setInterval(()=>{ if(running){ if(page==='today'){const t=document.getElementById('tick'); if(t)t.textContent=clock(Date.now()-running.start);} checkGoals(); } },1000);
+document.addEventListener('visibilitychange',()=>{if(!document.hidden){render();checkGoals();}});
+render(); checkGoals();
 if('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(()=>{});
 </script>
 </body>
