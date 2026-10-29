@@ -36,7 +36,17 @@ padding-bottom:env(safe-area-inset-bottom)}
 .cal .h{font-size:12px;color:var(--sub)}
 .d{border-radius:10px;padding:6px 0;min-height:52px;font-size:14px;background:#f2f2f7}
 .d small{display:block;font-size:11px;color:var(--sub)}
-.d.has{background:#e6e9ef}.d.has2{background:#c3cbdb}.d.has3{background:#8794ad;color:#fff}.d.has3 small{color:#fff}
+.d.has{background:var(--k1)}.d.has2{background:var(--k2)}.d.has3{background:var(--k3);color:var(--kt)}.d.has3 small{color:var(--kt)}
+.sw{display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--line)}
+.sw:last-child{border:0}.sw i{width:28px;height:28px;border-radius:50%;display:block}.sw span{flex:1}
+#pk{position:fixed;inset:0;background:rgba(0,0,0,.45);display:none;align-items:center;justify-content:center;z-index:20}
+#pk .box{background:#fff;border-radius:16px;padding:16px;width:290px;text-align:center}
+#ring{position:relative;width:220px;height:220px;margin:8px auto;border-radius:50%;touch-action:none;
+background:conic-gradient(from 0deg,hsl(0,70%,55%),hsl(60,70%,55%),hsl(120,70%,55%),hsl(180,70%,55%),hsl(240,70%,55%),hsl(300,70%,55%),hsl(360,70%,55%));
+-webkit-mask:radial-gradient(circle,transparent 62px,#000 63px);mask:radial-gradient(circle,transparent 62px,#000 63px)}
+#knob{position:absolute;width:22px;height:22px;border-radius:50%;border:3px solid #fff;box-shadow:0 0 3px rgba(0,0,0,.6);margin:-11px 0 0 -11px;pointer-events:none}
+#prev{width:80px;height:80px;border-radius:50%;position:absolute;left:70px;top:70px}
+#pk input[type=range]{width:100%;padding:0;border:0}
 .d.today{outline:2px solid var(--acc)}.d.sel{outline:2px solid #1d1d1f}
 .nav{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
 .nav button{border:0;background:#f2f2f7;border-radius:8px;padding:6px 14px;font-size:18px}
@@ -52,6 +62,11 @@ select,input{font-size:16px;padding:8px;border:1px solid var(--line);border-radi
 </head>
 <body>
 <div id="toast"></div>
+<div id="pk"><div class="box"><b id="pkt"></b>
+  <div style="position:relative"><div id="ring"><div id="knob"></div></div><div id="prev"></div></div>
+  <div style="text-align:left;font-size:13px;color:var(--sub)">饱和度<input id="pks" type="range" min="0" max="100"></div>
+  <div style="text-align:left;font-size:13px;color:var(--sub)">明暗<input id="pkl" type="range" min="20" max="85"></div>
+  <button class="btn" onclick="pkReset()">恢复默认</button><button class="btn" onclick="pkClose()">完成</button></div></div>
 <div class="page on" id="p-today"></div>
 <div class="page" id="p-cal"></div>
 <div class="page" id="p-week"></div>
@@ -62,6 +77,41 @@ select,input{font-size:16px;padding:8px;border:1px solid var(--line);border-radi
 </div>
 <script>
 const SUBJ=['政治','英语','数学','控制'], COL=['var(--c0)','var(--c1)','var(--c2)','var(--c3)'];
+// ---- 颜色设置（色环）----
+const DEF={c:[[5,32,59],[218,31,57],[37,40,61],[140,18,57]],cal:[220,20,58]};
+let colors=load('study.colors',null)||JSON.parse(JSON.stringify(DEF));
+const hsl=a=>`hsl(${a[0]},${a[1]}%,${a[2]}%)`;
+function applyColors(){
+  const r=document.documentElement.style;
+  colors.c.forEach((a,i)=>r.setProperty('--c'+i,hsl(a)));
+  const [h,s,l]=colors.cal;
+  r.setProperty('--k1',`hsla(${h},${s}%,${l}%,.25)`);r.setProperty('--k2',`hsla(${h},${s}%,${l}%,.55)`);
+  r.setProperty('--k3',hsl(colors.cal));r.setProperty('--kt',l>65?'#1d1d1f':'#fff');
+  localStorage.setItem('study.colors',JSON.stringify(colors));
+}
+let pkT=null; // 'c0'..'c3' 或 'cal'
+const pkGet=()=>pkT==='cal'?colors.cal:colors.c[+pkT[1]];
+function pkShow(){
+  const a=pkGet(), R=88, rad=(a[0]-90)*Math.PI/180;
+  const k=document.getElementById('knob'); k.style.left=(110+R*Math.cos(rad))+'px'; k.style.top=(110+R*Math.sin(rad))+'px';
+  document.getElementById('prev').style.background=hsl(a);
+  document.getElementById('pks').value=a[1]; document.getElementById('pkl').value=a[2];
+  applyColors();
+}
+function pkOpen(t){ pkT=t; document.getElementById('pkt').textContent=t==='cal'?'日历"已学"颜色':SUBJ[+t[1]]+'按钮颜色';
+  document.getElementById('pk').style.display='flex'; pkShow(); }
+function pkClose(){ document.getElementById('pk').style.display='none'; render(); }
+function pkReset(){ const d=pkT==='cal'?DEF.cal:DEF.c[+pkT[1]]; pkGet().splice(0,3,...d); pkShow(); }
+(()=>{
+  const ring=document.getElementById('ring');
+  const mv=e=>{const b=ring.getBoundingClientRect();
+    pkGet()[0]=Math.round((Math.atan2(e.clientY-b.top-110,e.clientX-b.left-110)*180/Math.PI+90+360)%360); pkShow();};
+  ring.addEventListener('pointerdown',e=>{ring.setPointerCapture(e.pointerId);mv(e)});
+  ring.addEventListener('pointermove',e=>{if(ring.hasPointerCapture(e.pointerId))mv(e)});
+  document.getElementById('pks').oninput=e=>{pkGet()[1]=+e.target.value;pkShow()};
+  document.getElementById('pkl').oninput=e=>{pkGet()[2]=+e.target.value;pkShow()};
+})();
+applyColors();
 const K='study.sessions', KR='study.running';
 const load=(k,d)=>{try{return JSON.parse(localStorage.getItem(k))??d}catch{return d}};
 let sessions=load(K,[]);          // {id,s:科目序号,start:ms,end:ms}
@@ -196,6 +246,9 @@ function renderWeek(){
   <div class="goal">每周目标 <input type="number" inputmode="decimal" step="0.5" min="0" value="${goals.week}" onchange="setGoal('week',this.value)"> 小时</div>
   <div style="color:var(--sub);font-size:13px">填 0 表示不设目标。达到目标时会弹出提示。</div>
   <button class="btn" onclick="askNotify()">${'Notification' in window&&Notification.permission==='granted'?'系统通知：已开启':'开启系统通知'}</button></div>
+  <div class="card"><h2>颜色设置（点击后在色环上选）</h2>`+
+  SUBJ.map((n,i)=>`<div class="sw" onclick="pkOpen('c${i}')"><i style="background:var(--c${i})"></i><span>${n}按钮</span>›</div>`).join('')+
+  `<div class="sw" onclick="pkOpen('cal')"><i style="background:var(--k3)"></i><span>日历"已学"的天</span>›</div></div>
   <div class="card"><h2>数据备份</h2><button class="btn" onclick="exp()">导出</button>
   <button class="btn" onclick="document.getElementById('imp').click()">导入</button>
   <input id="imp" type="file" accept=".json" hidden onchange="imp(this.files[0])">
