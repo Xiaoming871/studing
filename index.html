@@ -66,6 +66,7 @@ select,input{font-size:16px;padding:8px;border:1px solid var(--line);border-radi
   <div style="position:relative"><div id="ring"><div id="knob"></div></div><div id="prev"></div></div>
   <div style="text-align:left;font-size:13px;color:var(--sub)">饱和度<input id="pks" type="range" min="0" max="100"></div>
   <div style="text-align:left;font-size:13px;color:var(--sub)">明暗<input id="pkl" type="range" min="20" max="85"></div>
+  <div style="text-align:left;font-size:13px;color:var(--sub);margin:6px 0">色号 <input id="pkh" maxlength="7" placeholder="#b87a74" style="width:110px" onchange="pkHex(this.value)"></div>
   <button class="btn" onclick="pkReset()">恢复默认</button><button class="btn" onclick="pkClose()">完成</button></div></div>
 <div class="page on" id="p-today"></div>
 <div class="page" id="p-cal"></div>
@@ -92,8 +93,20 @@ function applyColors(){
 }
 let pkT=null; // 'c0'..'c3' 或 'cal'
 const pkGet=()=>pkT==='cal'?colors.cal:colors.c[+pkT[1]];
+function hsl2hex(h,s,l){s/=100;l/=100;const f=n=>{const k=(n+h/30)%12,a=s*Math.min(l,1-l);
+  return Math.round(255*(l-a*Math.max(-1,Math.min(k-3,9-k,1)))).toString(16).padStart(2,'0')};return '#'+f(0)+f(8)+f(4)}
+function pkHex(v){
+  let m=/^#?([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(v.trim()); if(!m) return alert('请输入色号，如 #b87a74');
+  let x=m[1]; if(x.length===3) x=x.replace(/./g,'$&$&');
+  const r=parseInt(x.slice(0,2),16)/255,g=parseInt(x.slice(2,4),16)/255,b=parseInt(x.slice(4),16)/255;
+  const mx=Math.max(r,g,b),mn=Math.min(r,g,b),l=(mx+mn)/2,d=mx-mn;
+  let h=0,s=0; if(d){ s=d/(1-Math.abs(2*l-1));
+    h=mx===r?((g-b)/d+6)%6:mx===g?(b-r)/d+2:(r-g)/d+4; h*=60; }
+  const a=pkGet(); a[0]=Math.round(h);a[1]=Math.round(s*100);a[2]=Math.round(l*100); pkShow();
+}
 function pkShow(){
   const a=pkGet(), R=88, rad=(a[0]-90)*Math.PI/180;
+  document.getElementById('pkh').value=hsl2hex(a[0],a[1],a[2]);
   const k=document.getElementById('knob'); k.style.left=(110+R*Math.cos(rad))+'px'; k.style.top=(110+R*Math.sin(rad))+'px';
   document.getElementById('prev').style.background=hsl(a);
   document.getElementById('pks').value=a[1]; document.getElementById('pkl').value=a[2];
